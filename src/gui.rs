@@ -1,8 +1,10 @@
 use crate::{graph::Graph, param::Param, params::Params};
 use iced::alignment::{Horizontal, Vertical};
-use iced::widget::{canvas, column, row, text, text_input};
+use iced::border::Radius;
+use iced::widget::container::Style;
+use iced::widget::{canvas, column, container, row, text, text_input, Space};
 use iced::Length::FillPortion;
-use iced::{application, Element, Fill, Result, Task, Theme};
+use iced::{application, Border, Element, Fill, Result, Task, Theme};
 use std::ops::{Index, IndexMut};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -92,8 +94,8 @@ impl Gui {
                 self.param_box(Param::Offset),
                 self.param_box(Param::OutputCap),
             ]
-            .spacing(20.)
-            .padding(10.)
+            .spacing(40.)
+            .padding(20.)
             .align_x(Horizontal::Center)
             .width(FillPortion(1)),
             canvas(Graph::from(self.params))
@@ -106,18 +108,34 @@ impl Gui {
     }
 
     fn param_box(&self, param: Param) -> Element<'static, Message> {
-        row![
-            text(param.display_name())
-                .align_x(Horizontal::Right)
-                .width(Fill),
-            text_input(param.kernel_name(), &self.input_buffer[param])
-                .on_input(move |s| Message::FieldInput(param, s))
-                .on_submit(Message::FieldUpdate(param))
-                .align_x(Horizontal::Left)
-                .width(Fill),
-        ]
-        .spacing(5.)
-        .align_y(Vertical::Center)
+        container(
+            column![
+                text(param.display_name())
+                    .align_x(Horizontal::Center)
+                    .width(Fill),
+                row![
+                    Space::with_width(FillPortion(1)),
+                    text_input(param.kernel_name(), &self.input_buffer[param])
+                        .on_input(move |s| Message::FieldInput(param, s))
+                        .on_submit(Message::FieldUpdate(param))
+                        .padding(5.)
+                        .align_x(Horizontal::Left)
+                        .width(FillPortion(4)),
+                    Space::with_width(FillPortion(1)),
+                ],
+            ]
+            .spacing(5.)
+            .width(Fill),
+        )
+        .style(|theme: &Theme| Style {
+            border: Border {
+                color: theme.palette().primary,
+                width: 2.,
+                radius: Radius::new(5.),
+            },
+            ..Style::default()
+        })
+        .padding([20., 0.])
         .width(Fill)
         .into()
     }
