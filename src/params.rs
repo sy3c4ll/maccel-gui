@@ -1,12 +1,23 @@
 use crate::param::Param;
 use std::ops::{Index, IndexMut};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Params {
     pub sens_mult: f64,
     pub accel: f64,
     pub offset: f64,
     pub output_cap: f64,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Params {
+            sens_mult: 1.,
+            accel: 0.,
+            offset: 0.,
+            output_cap: 0.,
+        }
+    }
 }
 
 impl Index<Param> for Params {

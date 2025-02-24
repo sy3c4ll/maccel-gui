@@ -1,8 +1,8 @@
 use crate::{graph::Graph, param::Param, params::Params};
-use iced::alignment::{Horizontal, Vertical};
+use iced::alignment::Horizontal;
 use iced::border::Radius;
 use iced::widget::container::Style;
-use iced::widget::{canvas, column, container, row, text, text_input, Space};
+use iced::widget::{canvas, center, column, container, row, text, text_input, Space};
 use iced::Length::FillPortion;
 use iced::{application, Border, Element, Fill, Result, Task, Theme};
 use std::ops::{Index, IndexMut};
@@ -88,22 +88,42 @@ impl Gui {
     }
     fn view(&self) -> Element<Message> {
         row![
-            column![
-                self.param_box(Param::SensMult),
-                self.param_box(Param::Accel),
-                self.param_box(Param::Offset),
-                self.param_box(Param::OutputCap),
-            ]
-            .spacing(40.)
+            center(
+                column![
+                    text("Parameters").size(32).center(),
+                    self.param_box(Param::SensMult),
+                    self.param_box(Param::Accel),
+                    self.param_box(Param::Offset),
+                    self.param_box(Param::OutputCap),
+                ]
+                .spacing(20.)
+                .align_x(Horizontal::Center)
+                .width(Fill)
+            )
+            .style(|theme: &Theme| Style {
+                border: Border {
+                    color: theme.palette().primary,
+                    width: 1.,
+                    radius: Radius::new(10.),
+                },
+                ..Style::default()
+            })
             .padding(20.)
-            .align_x(Horizontal::Center)
-            .width(FillPortion(1)),
-            canvas(Graph::from(self.params))
-                .width(FillPortion(3))
-                .height(Fill),
+            .width(FillPortion(1))
+            .height(Fill),
+            center(canvas(Graph::from(self.params)).width(Fill).height(Fill))
+                .style(|theme: &Theme| Style {
+                    border: Border {
+                        color: theme.palette().primary,
+                        width: 1.,
+                        radius: Radius::new(10.),
+                    },
+                    ..Style::default()
+                })
+                .width(FillPortion(3)),
         ]
-        .align_y(Vertical::Center)
-        .height(Fill)
+        .spacing(5.)
+        .padding(5.)
         .into()
     }
 
@@ -124,19 +144,17 @@ impl Gui {
                     Space::with_width(FillPortion(1)),
                 ],
             ]
-            .spacing(5.)
-            .width(Fill),
+            .spacing(5.),
         )
         .style(|theme: &Theme| Style {
             border: Border {
-                color: theme.palette().primary,
+                color: theme.extended_palette().secondary.strong.color,
                 width: 2.,
                 radius: Radius::new(5.),
             },
             ..Style::default()
         })
         .padding([20., 0.])
-        .width(Fill)
         .into()
     }
 }
