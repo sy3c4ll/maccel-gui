@@ -1,4 +1,7 @@
-use crate::{graph::Graph, param::Param, params::Params};
+use crate::{
+    graph::Graph,
+    params::{Param, Params},
+};
 use iced::alignment::Horizontal;
 use iced::border::Radius;
 use iced::widget::container::Style;
