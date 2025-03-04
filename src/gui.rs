@@ -5,7 +5,7 @@ use crate::{
 use iced::alignment::Horizontal;
 use iced::border::Radius;
 use iced::widget::container::Style;
-use iced::widget::{canvas, center, column, container, row, text, text_input, Space};
+use iced::widget::{button, canvas, center, column, container, row, text, text_input, Space};
 use iced::Length::FillPortion;
 use iced::{application, Border, Element, Fill, Result, Task, Theme};
 use std::ops::{Index, IndexMut};
@@ -93,11 +93,11 @@ impl Gui {
         row![
             center(
                 column![
-                    text("Parameters").size(32).center(),
                     self.param_box(Param::SensMult),
                     self.param_box(Param::Accel),
                     self.param_box(Param::Offset),
                     self.param_box(Param::OutputCap),
+                    button("Apply"),
                 ]
                 .spacing(20.)
                 .align_x(Horizontal::Center)
