@@ -2,11 +2,11 @@ use crate::{
     graph::Graph,
     params::{Param, Params},
 };
-use iced::alignment::Horizontal;
 use iced::border::Radius;
 use iced::widget::container::Style;
 use iced::widget::{button, canvas, center, column, container, row, text, text_input, Space};
 use iced::Length::FillPortion;
+use iced::{alignment::Horizontal, widget::scrollable};
 use iced::{application, Border, Element, Fill, Result, Task, Theme};
 use std::ops::{Index, IndexMut};
 
@@ -91,7 +91,7 @@ impl Gui {
     }
     fn view(&self) -> Element<Message> {
         row![
-            center(
+            center(scrollable(
                 column![
                     self.param_box(Param::SensMult),
                     self.param_box(Param::Accel),
@@ -102,7 +102,7 @@ impl Gui {
                 .spacing(20.)
                 .align_x(Horizontal::Center)
                 .width(Fill)
-            )
+            ))
             .style(|theme: &Theme| Style {
                 border: Border {
                     color: theme.palette().primary,
@@ -157,7 +157,7 @@ impl Gui {
             },
             ..Style::default()
         })
-        .padding([20., 0.])
+        .padding([15., 0.])
         .into()
     }
 }

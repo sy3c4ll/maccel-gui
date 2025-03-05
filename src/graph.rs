@@ -1,10 +1,13 @@
-use crate::params::Params;
+use crate::{inputspeed::read_input_speed, params::Params};
 use iced::alignment::{Horizontal, Vertical};
 use iced::mouse::Cursor;
+use iced::widget::canvas::fill::Rule;
 use iced::widget::canvas::gradient::Linear;
 use iced::widget::canvas::path::lyon_path::geom::euclid::{Transform2D, Vector2D};
+use iced::widget::canvas::path::Builder;
 use iced::widget::canvas::{
-    Frame, Geometry, Gradient, LineCap, LineDash, LineJoin, Path, Program, Stroke, Style, Text,
+    Fill, Frame, Geometry, Gradient, LineCap, LineDash, LineJoin, Path, Program, Stroke, Style,
+    Text,
 };
 use iced::{color, Color, Pixels, Point, Rectangle, Renderer, Size, Theme, Vector};
 
@@ -23,6 +26,67 @@ impl Graph {
             y: size.height - ORIGIN_MARGIN,
             width: size.width - ORIGIN_MARGIN - EDGE_MARGIN,
             height: -size.height + ORIGIN_MARGIN + EDGE_MARGIN,
+        }
+    }
+    fn build_path(&self, builder: &mut Builder, limit: Size) {
+        let Params {
+            sens_mult,
+            accel,
+            offset,
+            output_cap,
+        } = self.params;
+        let (sens_mult, accel, offset, output_cap) = (
+            sens_mult as f32,
+            accel as f32,
+            offset as f32,
+            output_cap as f32,
+        );
+
+        builder.move_to(Point {
+            x: 0.,
+            y: sens_mult,
+        });
+        if output_cap <= 0. {
+            // No cap
+            if offset > 0. {
+                builder.line_to(Point {
+                    x: offset,
+                    y: sens_mult,
+                });
+            }
+            builder.line_to(Point {
+                x: limit.width,
+                y: sens_mult + (limit.width - offset) * accel,
+            });
+        } else if output_cap <= 1. {
+            // Nonsensical cap, but treat as no accel
+            builder.line_to(Point {
+                x: limit.width,
+                y: sens_mult,
+            });
+        } else {
+            // Well-defined cap
+            if offset > 0. {
+                builder.line_to(Point {
+                    x: offset,
+                    y: sens_mult,
+                });
+            }
+            if offset + (sens_mult * (output_cap - 1.)) / accel < limit.width {
+                builder.line_to(Point {
+                    x: offset + (sens_mult * (output_cap - 1.)) / accel,
+                    y: sens_mult * output_cap,
+                });
+                builder.line_to(Point {
+                    x: limit.width,
+                    y: sens_mult * output_cap,
+                });
+            } else {
+                builder.line_to(Point {
+                    x: limit.width,
+                    y: sens_mult + (limit.width - offset) * accel,
+                });
+            }
         }
     }
 }
@@ -53,6 +117,9 @@ impl<M> Program<M> for Graph {
             output_cap as f32,
         );
 
+        let graph_transform =
+            Transform2D::scale(graph_sz.width / axes.width, graph_sz.height / axes.height)
+                .then_translate(Vector2D::new(graph_pos.x, graph_pos.y));
         let graph_stroke = Stroke {
             style: Style::Solid(Color::WHITE),
             width: 1.,
@@ -63,11 +130,18 @@ impl<M> Program<M> for Graph {
                 offset: 0,
             },
         };
-        let axes_stroke = Stroke {
+        let x_axis_stroke = Stroke {
             style: Style::Gradient(Gradient::Linear(
-                Linear::new(graph_pos, graph_pos + graph_sz.into())
-                    .add_stop(0., color!(0x00ff00))
-                    .add_stop(0.5, color!(0xff0000)),
+                Linear::new(
+                    graph_pos,
+                    graph_pos
+                        + Vector {
+                            x: graph_sz.width,
+                            y: 0.,
+                        },
+                )
+                .add_stop(0., color!(0x00ff00))
+                .add_stop(1., color!(0xff0000)),
             )),
             width: 3.,
             line_cap: LineCap::Square,
@@ -77,61 +151,47 @@ impl<M> Program<M> for Graph {
                 offset: 0,
             },
         };
+        let y_axis_stroke = Stroke {
+            style: Style::Gradient(Gradient::Linear(
+                Linear::new(
+                    graph_pos,
+                    graph_pos
+                        + Vector {
+                            x: 0.,
+                            y: graph_sz.height,
+                        },
+                )
+                .add_stop(0., color!(0x00ff00))
+                .add_stop(1., color!(0xff0000)),
+            )),
+            width: 3.,
+            line_cap: LineCap::Square,
+            line_join: LineJoin::Bevel,
+            line_dash: LineDash {
+                segments: &[],
+                offset: 0,
+            },
+        };
+        let input_indicator_fill = Fill {
+            style: Style::Gradient(Gradient::Linear(
+                Linear::new(
+                    graph_pos,
+                    graph_pos
+                        + Vector {
+                            x: graph_sz.width,
+                            y: 0.,
+                        },
+                )
+                .add_stop(0., color!(0x404000, 0.1))
+                .add_stop(0.5, color!(0x404000, 0.9)),
+            )),
+            rule: Rule::NonZero,
+        };
 
         let mut frame = Frame::new(renderer, bounds.size());
 
-        let graph = Path::new(|b| {
-            b.move_to(Point {
-                x: 0.,
-                y: sens_mult,
-            });
-            if output_cap <= 0. {
-                // No cap
-                if offset > 0. {
-                    b.line_to(Point {
-                        x: offset,
-                        y: sens_mult,
-                    });
-                }
-                b.line_to(Point {
-                    x: axes.width,
-                    y: sens_mult + (axes.width - offset) * accel,
-                });
-            } else if output_cap <= 1. {
-                // Nonsensical cap, but treat as no accel
-                b.line_to(Point {
-                    x: axes.width,
-                    y: sens_mult,
-                });
-            } else {
-                // Well-defined cap
-                if offset > 0. {
-                    b.line_to(Point {
-                        x: offset,
-                        y: sens_mult,
-                    });
-                }
-                if offset + (sens_mult * (output_cap - 1.)) / accel < axes.width {
-                    b.line_to(Point {
-                        x: offset + (sens_mult * (output_cap - 1.)) / accel,
-                        y: sens_mult * output_cap,
-                    });
-                    b.line_to(Point {
-                        x: axes.width,
-                        y: sens_mult * output_cap,
-                    });
-                } else {
-                    b.line_to(Point {
-                        x: axes.width,
-                        y: sens_mult + (axes.width - offset) * accel,
-                    });
-                }
-            }
-        });
-        let real_graph = graph.transform(
-            &Transform2D::scale(graph_sz.width / axes.width, graph_sz.height / axes.height)
-                .then_translate(Vector2D::new(graph_pos.x, graph_pos.y)),
-        );
+        let graph = Path::new(|b| self.build_path(b, axes));
+        let real_graph = graph.transform(&graph_transform);
         frame.stroke(&real_graph, graph_stroke);
 
         let x_axis = Path::line(
@@ -142,8 +202,31 @@ impl<M> Program<M> for Graph {
             graph_pos + Vector::new(0., 10.),
             graph_pos + Vector::new(0., graph_sz.height),
         );
-        frame.stroke(&x_axis, axes_stroke);
-        frame.stroke(&y_axis, axes_stroke);
+        frame.stroke(&x_axis, x_axis_stroke);
+        frame.stroke(&y_axis, y_axis_stroke);
+
+        let input_speed = (read_input_speed() as f32).clamp(0., axes.width);
+        let input_indicator = Path::new(|b| {
+            b.move_to(Point::ORIGIN);
+            b.line_to(Point {
+                x: 0.,
+                y: sens_mult,
+            });
+            self.build_path(
+                b,
+                Size {
+                    width: input_speed,
+                    height: axes.height,
+                },
+            );
+            b.line_to(Point {
+                x: input_speed,
+                y: 0.,
+            });
+            b.line_to(Point::ORIGIN);
+        });
+        let real_input_indicator = input_indicator.transform(&graph_transform);
+        frame.fill(&real_input_indicator, input_indicator_fill);
 
         let vertex_labels = if output_cap <= 0. {
             if offset > 0. {

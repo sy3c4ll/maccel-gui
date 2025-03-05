@@ -1,5 +1,6 @@
 mod graph;
 mod gui;
+mod inputspeed;
 mod params;
 
 use gui::Gui;
