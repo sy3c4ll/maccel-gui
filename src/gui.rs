@@ -2,18 +2,25 @@ use crate::{
     graph::Graph,
     params::{Param, Params},
 };
-use iced::border::Radius;
 use iced::widget::container::Style;
 use iced::widget::{button, canvas, center, column, container, row, text, text_input, Space};
 use iced::Length::FillPortion;
 use iced::{alignment::Horizontal, widget::scrollable};
 use iced::{application, Border, Element, Fill, Result, Task, Theme};
+use iced::{
+    border::Radius,
+    keyboard::{key::Named, on_key_press, Key, Modifiers},
+};
 use std::ops::{Index, IndexMut};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Message {
     FieldInput(Param, String),
     FieldUpdate(Param),
+    NextField,
+    PrevField,
+    NextMode,
+    PrevMode,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -68,26 +75,66 @@ impl Default for InputBuffer {
 pub struct Gui {
     params: Params,
     input_buffer: InputBuffer,
+    focused: Option<Param>,
 }
 
 impl Gui {
+    const PARAM_ORDER: [Param; 4] = [
+        Param::SensMult,
+        Param::Accel,
+        Param::Offset,
+        Param::OutputCap,
+    ];
+
     pub fn run(self) -> Result {
         application("maccel", Gui::update, Gui::view)
+            .subscription(|_| on_key_press(Gui::handle_key))
             .antialiasing(true)
             .centered()
             .theme(|_| Theme::TokyoNight)
             .run_with(|| (self, Task::none()))
     }
-    fn update(&mut self, msg: Message) {
+    fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
-            Message::FieldInput(param, s) => self.input_buffer[param] = s,
+            Message::FieldInput(param, s) => {
+                self.input_buffer[param] = s;
+                self.focused = Some(param);
+            }
             Message::FieldUpdate(param) => {
                 if let Ok(f) = self.input_buffer[param].parse::<f64>() {
                     self.params[param] = f;
                 }
                 self.input_buffer[param] = self.params[param].to_string();
             }
+            Message::NextField => {
+                if let Some(param) = self.focused {
+                    let next = *Gui::PARAM_ORDER
+                        .iter()
+                        .cycle()
+                        .skip_while(|&&p| p != param)
+                        .nth(1)
+                        .unwrap();
+                    self.focused = Some(next);
+                    return text_input::focus(next.kernel_name());
+                }
+            }
+            Message::PrevField => {
+                if let Some(param) = self.focused {
+                    let prev = *Gui::PARAM_ORDER
+                        .iter()
+                        .rev()
+                        .cycle()
+                        .skip_while(|&&p| p != param)
+                        .nth(1)
+                        .unwrap();
+                    self.focused = Some(prev);
+                    return text_input::focus(prev.kernel_name());
+                }
+            }
+            Message::NextMode => todo!(),
+            Message::PrevMode => todo!(),
         }
+        Task::none()
     }
     fn view(&self) -> Element<Message> {
         row![
@@ -129,6 +176,17 @@ impl Gui {
         .padding(5.)
         .into()
     }
+    fn handle_key(key: Key, modi: Modifiers) -> Option<Message> {
+        match key {
+            Key::Named(Named::Tab) if modi == Modifiers::empty() => Some(Message::NextField),
+            Key::Named(Named::ArrowDown) => Some(Message::NextField),
+            Key::Named(Named::Tab) if modi == Modifiers::SHIFT => Some(Message::PrevField),
+            Key::Named(Named::ArrowUp) => Some(Message::PrevField),
+            Key::Named(Named::ArrowRight) => Some(Message::NextMode),
+            Key::Named(Named::ArrowLeft) => Some(Message::PrevMode),
+            _ => None,
+        }
+    }
 
     fn param_box(&self, param: Param) -> Element<'static, Message> {
         container(
@@ -139,6 +197,7 @@ impl Gui {
                 row![
                     Space::with_width(FillPortion(1)),
                     text_input(param.kernel_name(), &self.input_buffer[param])
+                        .id(param.kernel_name())
                         .on_input(move |s| Message::FieldInput(param, s))
                         .on_submit(Message::FieldUpdate(param))
                         .padding(5.)
@@ -167,6 +226,7 @@ impl From<Params> for Gui {
         Gui {
             params,
             input_buffer: InputBuffer::from(params),
+            focused: None,
         }
     }
 }
