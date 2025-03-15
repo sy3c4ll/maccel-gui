@@ -28,7 +28,7 @@ impl Graph {
             height: -size.height + ORIGIN_MARGIN + EDGE_MARGIN,
         }
     }
-    fn build_path(&self, builder: &mut Builder, limit: Size) {
+    fn build_graph(&self, builder: &mut Builder, limit: Size) {
         let Params {
             sens_mult,
             accel,
@@ -190,21 +190,6 @@ impl<M> Program<M> for Graph {
 
         let mut frame = Frame::new(renderer, bounds.size());
 
-        let graph = Path::new(|b| self.build_path(b, axes));
-        let real_graph = graph.transform(&graph_transform);
-        frame.stroke(&real_graph, graph_stroke);
-
-        let x_axis = Path::line(
-            graph_pos + Vector::new(-10., 0.),
-            graph_pos + Vector::new(graph_sz.width, 0.),
-        );
-        let y_axis = Path::line(
-            graph_pos + Vector::new(0., 10.),
-            graph_pos + Vector::new(0., graph_sz.height),
-        );
-        frame.stroke(&x_axis, x_axis_stroke);
-        frame.stroke(&y_axis, y_axis_stroke);
-
         let input_speed = (read_input_speed() as f32).clamp(0., axes.width);
         let input_indicator = Path::new(|b| {
             b.move_to(Point::ORIGIN);
@@ -212,7 +197,7 @@ impl<M> Program<M> for Graph {
                 x: 0.,
                 y: sens_mult,
             });
-            self.build_path(
+            self.build_graph(
                 b,
                 Size {
                     width: input_speed,
@@ -227,6 +212,21 @@ impl<M> Program<M> for Graph {
         });
         let real_input_indicator = input_indicator.transform(&graph_transform);
         frame.fill(&real_input_indicator, input_indicator_fill);
+
+        let graph = Path::new(|b| self.build_graph(b, axes));
+        let real_graph = graph.transform(&graph_transform);
+        frame.stroke(&real_graph, graph_stroke);
+
+        let x_axis = Path::line(
+            graph_pos + Vector::new(-10., 0.),
+            graph_pos + Vector::new(graph_sz.width, 0.),
+        );
+        let y_axis = Path::line(
+            graph_pos + Vector::new(0., 10.),
+            graph_pos + Vector::new(0., graph_sz.height),
+        );
+        frame.stroke(&x_axis, x_axis_stroke);
+        frame.stroke(&y_axis, y_axis_stroke);
 
         let vertex_labels = if output_cap <= 0. {
             if offset > 0. {
