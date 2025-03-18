@@ -91,6 +91,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.97"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcfed56ad506cb2c684a14971b8861fdc3baaaae314b9e5f9bb532cbe3ba7a4f"
+
+[[package]]
 name = "approx"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1766,10 +1772,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "maccel-core"
+version = "0.0.0"
+source = "git+https://github.com/Gnarus-G/maccel#7729d2c8d039ac480d6e67d0046ad583af67f7f2"
+dependencies = [
+ "anyhow",
+ "cc",
+ "paste",
+]
+
+[[package]]
 name = "maccel-gui-prot"
 version = "0.1.0"
 dependencies = [
  "iced",
+ "maccel-core",
  "rand 0.9.0",
 ]
 

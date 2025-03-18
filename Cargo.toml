@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 iced = { version = "0.13.1", features = ["advanced", "canvas"] }
+maccel-core = { git = "https://github.com/Gnarus-G/maccel", version = "0.0.0" }
 rand = "0.9.0"
