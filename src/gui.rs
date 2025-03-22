@@ -1,19 +1,19 @@
-use crate::{
-    graph::Graph,
-    params::{Param, Params},
-};
-use iced::widget::container::Style;
-use iced::widget::{button, canvas, center, column, container, row, text, text_input, Space};
+use crate::graph::Graph;
 use iced::Length::FillPortion;
+use iced::widget::container::Style;
+use iced::widget::{Space, button, canvas, center, column, container, row, text, text_input};
+use iced::{Border, Element, Fill, Result, Task, Theme, application};
 use iced::{alignment::Horizontal, widget::scrollable};
-use iced::{application, Border, Element, Fill, Result, Task, Theme};
 use iced::{
     border::Radius,
-    keyboard::{key::Named, on_key_press, Key, Modifiers},
+    keyboard::{Key, Modifiers, key::Named, on_key_press},
 };
+use maccel_core::fixedptc::Fpt;
+use maccel_core::{AllParamArgs, Param};
+use std::mem::transmute_copy;
 use std::ops::{Index, IndexMut};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Message {
     FieldInput(Param, String),
     FieldUpdate(Param),
@@ -31,14 +31,26 @@ struct InputBuffer {
     pub output_cap: String,
 }
 
+impl InputBuffer {
+    pub fn new(params: &AllParamArgs) -> Self {
+        InputBuffer {
+            sens_mult: params.sens_mult.to_string(),
+            accel: params.accel.to_string(),
+            offset: params.offset_linear.to_string(),
+            output_cap: params.output_cap.to_string(),
+        }
+    }
+}
+
 impl Index<Param> for InputBuffer {
     type Output = String;
     fn index(&self, param: Param) -> &Self::Output {
         match param {
             Param::SensMult => &self.sens_mult,
             Param::Accel => &self.accel,
-            Param::Offset => &self.offset,
+            Param::OffsetLinear => &self.offset,
             Param::OutputCap => &self.output_cap,
+            _ => todo!(),
         }
     }
 }
@@ -48,32 +60,16 @@ impl IndexMut<Param> for InputBuffer {
         match param {
             Param::SensMult => &mut self.sens_mult,
             Param::Accel => &mut self.accel,
-            Param::Offset => &mut self.offset,
+            Param::OffsetLinear => &mut self.offset,
             Param::OutputCap => &mut self.output_cap,
+            _ => todo!(),
         }
     }
 }
 
-impl From<Params> for InputBuffer {
-    fn from(params: Params) -> Self {
-        InputBuffer {
-            sens_mult: params.sens_mult.to_string(),
-            accel: params.accel.to_string(),
-            offset: params.offset.to_string(),
-            output_cap: params.output_cap.to_string(),
-        }
-    }
-}
-
-impl Default for InputBuffer {
-    fn default() -> Self {
-        InputBuffer::from(Params::default())
-    }
-}
-
-#[derive(Clone, Debug, Default)]
+#[derive(Debug)]
 pub struct Gui {
-    params: Params,
+    params: AllParamArgs,
     input_buffer: InputBuffer,
     focused: Option<Param>,
 }
@@ -82,10 +78,35 @@ impl Gui {
     const PARAM_ORDER: [Param; 4] = [
         Param::SensMult,
         Param::Accel,
-        Param::Offset,
+        Param::OffsetLinear,
         Param::OutputCap,
     ];
+    const fn at(&self, param: Param) -> &Fpt {
+        match param {
+            Param::SensMult => &self.params.sens_mult,
+            Param::Accel => &self.params.accel,
+            Param::OffsetLinear => &self.params.offset_linear,
+            Param::OutputCap => &self.params.output_cap,
+            _ => todo!(),
+        }
+    }
+    const fn at_mut(&mut self, param: Param) -> &mut Fpt {
+        match param {
+            Param::SensMult => &mut self.params.sens_mult,
+            Param::Accel => &mut self.params.accel,
+            Param::OffsetLinear => &mut self.params.offset_linear,
+            Param::OutputCap => &mut self.params.output_cap,
+            _ => todo!(),
+        }
+    }
 
+    pub fn new(params: &AllParamArgs) -> Self {
+        Gui {
+            params: unsafe { transmute_copy(params) },
+            input_buffer: InputBuffer::new(params),
+            focused: None,
+        }
+    }
     pub fn run(self) -> Result {
         application("maccel", Gui::update, Gui::view)
             .subscription(|_| on_key_press(Gui::handle_key))
@@ -94,6 +115,7 @@ impl Gui {
             .theme(|_| Theme::TokyoNight)
             .run_with(|| (self, Task::none()))
     }
+
     fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
             Message::FieldInput(param, s) => {
@@ -102,9 +124,9 @@ impl Gui {
             }
             Message::FieldUpdate(param) => {
                 if let Ok(f) = self.input_buffer[param].parse::<f64>() {
-                    self.params[param] = f;
+                    *self.at_mut(param) = Fpt::from(f);
                 }
-                self.input_buffer[param] = self.params[param].to_string();
+                self.input_buffer[param] = self.at(param).to_string();
             }
             Message::NextField => {
                 if let Some(param) = self.focused {
@@ -115,7 +137,7 @@ impl Gui {
                         .nth(1)
                         .unwrap();
                     self.focused = Some(next);
-                    return text_input::focus(next.kernel_name());
+                    return text_input::focus(next.name());
                 }
             }
             Message::PrevField => {
@@ -128,7 +150,7 @@ impl Gui {
                         .nth(1)
                         .unwrap();
                     self.focused = Some(prev);
-                    return text_input::focus(prev.kernel_name());
+                    return text_input::focus(prev.name());
                 }
             }
             Message::NextMode => todo!(),
@@ -142,7 +164,7 @@ impl Gui {
                 column![
                     self.param_box(Param::SensMult),
                     self.param_box(Param::Accel),
-                    self.param_box(Param::Offset),
+                    self.param_box(Param::OffsetLinear),
                     self.param_box(Param::OutputCap),
                     button("Apply"),
                 ]
@@ -161,7 +183,7 @@ impl Gui {
             .padding(20.)
             .width(FillPortion(1))
             .height(Fill),
-            center(canvas(Graph::from(self.params)).width(Fill).height(Fill))
+            center(canvas(Graph::new(&self.params)).width(Fill).height(Fill))
                 .style(|theme: &Theme| Style {
                     border: Border {
                         color: theme.palette().primary,
@@ -187,7 +209,6 @@ impl Gui {
             _ => None,
         }
     }
-
     fn param_box(&self, param: Param) -> Element<'static, Message> {
         container(
             column![
@@ -196,8 +217,8 @@ impl Gui {
                     .width(Fill),
                 row![
                     Space::with_width(FillPortion(1)),
-                    text_input(param.kernel_name(), &self.input_buffer[param])
-                        .id(param.kernel_name())
+                    text_input(param.name(), &self.input_buffer[param])
+                        .id(param.name())
                         .on_input(move |s| Message::FieldInput(param, s))
                         .on_submit(Message::FieldUpdate(param))
                         .padding(5.)
@@ -218,15 +239,5 @@ impl Gui {
         })
         .padding([15., 0.])
         .into()
-    }
-}
-
-impl From<Params> for Gui {
-    fn from(params: Params) -> Self {
-        Gui {
-            params,
-            input_buffer: InputBuffer::from(params),
-            focused: None,
-        }
     }
 }

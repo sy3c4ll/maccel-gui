@@ -1,19 +1,21 @@
-use crate::{inputspeed::read_input_speed, params::Params};
+use std::mem::transmute_copy;
+
 use iced::alignment::{Horizontal, Vertical};
 use iced::mouse::Cursor;
 use iced::widget::canvas::fill::Rule;
 use iced::widget::canvas::gradient::Linear;
-use iced::widget::canvas::path::lyon_path::geom::euclid::{Transform2D, Vector2D};
 use iced::widget::canvas::path::Builder;
+use iced::widget::canvas::path::lyon_path::geom::euclid::{Transform2D, Vector2D};
 use iced::widget::canvas::{
     Fill, Frame, Geometry, Gradient, LineCap, LineDash, LineJoin, Path, Program, Stroke, Style,
     Text,
 };
-use iced::{color, Color, Pixels, Point, Rectangle, Renderer, Size, Theme, Vector};
+use iced::{Color, Pixels, Point, Rectangle, Renderer, Size, Theme, Vector, color};
+use maccel_core::{AllParamArgs, inputspeed::read_input_speed};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Debug)]
 pub struct Graph {
-    params: Params,
+    params: AllParamArgs,
 }
 
 impl Graph {
@@ -28,18 +30,26 @@ impl Graph {
             height: -size.height + ORIGIN_MARGIN + EDGE_MARGIN,
         }
     }
+
+    pub fn new(params: &AllParamArgs) -> Self {
+        Graph {
+            params: unsafe { transmute_copy(params) },
+        }
+    }
+
     fn build_graph(&self, builder: &mut Builder, limit: Size) {
-        let Params {
+        let AllParamArgs {
             sens_mult,
             accel,
-            offset,
+            offset_linear,
             output_cap,
+            ..
         } = self.params;
-        let (sens_mult, accel, offset, output_cap) = (
-            sens_mult as f32,
-            accel as f32,
-            offset as f32,
-            output_cap as f32,
+        let (sens_mult, accel, offset_linear, output_cap) = (
+            f64::from(sens_mult) as f32,
+            f64::from(accel) as f32,
+            f64::from(offset_linear) as f32,
+            f64::from(output_cap) as f32,
         );
 
         builder.move_to(Point {
@@ -48,15 +58,15 @@ impl Graph {
         });
         if output_cap <= 0. {
             // No cap
-            if offset > 0. {
+            if offset_linear > 0. {
                 builder.line_to(Point {
-                    x: offset,
+                    x: offset_linear,
                     y: sens_mult,
                 });
             }
             builder.line_to(Point {
                 x: limit.width,
-                y: sens_mult + (limit.width - offset) * accel,
+                y: sens_mult + (limit.width - offset_linear) * accel,
             });
         } else if output_cap <= 1. {
             // Nonsensical cap, but treat as no accel
@@ -66,15 +76,15 @@ impl Graph {
             });
         } else {
             // Well-defined cap
-            if offset > 0. {
+            if offset_linear > 0. {
                 builder.line_to(Point {
-                    x: offset,
+                    x: offset_linear,
                     y: sens_mult,
                 });
             }
-            if offset + (sens_mult * (output_cap - 1.)) / accel < limit.width {
+            if offset_linear + (sens_mult * (output_cap - 1.)) / accel < limit.width {
                 builder.line_to(Point {
-                    x: offset + (sens_mult * (output_cap - 1.)) / accel,
+                    x: offset_linear + (sens_mult * (output_cap - 1.)) / accel,
                     y: sens_mult * output_cap,
                 });
                 builder.line_to(Point {
@@ -84,7 +94,7 @@ impl Graph {
             } else {
                 builder.line_to(Point {
                     x: limit.width,
-                    y: sens_mult + (limit.width - offset) * accel,
+                    y: sens_mult + (limit.width - offset_linear) * accel,
                 });
             }
         }
@@ -104,17 +114,18 @@ impl<M> Program<M> for Graph {
         let axes = Graph::AXIS_BOUNDS;
         let graph_area = Graph::graph_area(bounds.size());
         let (graph_sz, graph_pos) = (graph_area.size(), graph_area.position());
-        let Params {
+        let AllParamArgs {
             sens_mult,
             accel,
-            offset,
+            offset_linear,
             output_cap,
+            ..
         } = self.params;
-        let (sens_mult, accel, offset, output_cap) = (
-            sens_mult as f32,
-            accel as f32,
-            offset as f32,
-            output_cap as f32,
+        let (sens_mult, accel, offset_linear, output_cap) = (
+            f64::from(sens_mult) as f32,
+            f64::from(accel) as f32,
+            f64::from(offset_linear) as f32,
+            f64::from(output_cap) as f32,
         );
 
         let graph_transform =
@@ -229,27 +240,27 @@ impl<M> Program<M> for Graph {
         frame.stroke(&y_axis, y_axis_stroke);
 
         let vertex_labels = if output_cap <= 0. {
-            if offset > 0. {
-                (&[offset][..], &[sens_mult][..])
+            if offset_linear > 0. {
+                (&[offset_linear][..], &[sens_mult][..])
             } else {
                 (&[][..], &[sens_mult][..])
             }
         } else if output_cap <= 1. {
             (&[][..], &[sens_mult][..])
         } else {
-            let cap_x = offset + (sens_mult * (output_cap - 1.)) / accel;
+            let cap_x = offset_linear + (sens_mult * (output_cap - 1.)) / accel;
             if cap_x < axes.width {
-                if offset > 0. {
+                if offset_linear > 0. {
                     (
-                        &[offset, cap_x][..],
+                        &[offset_linear, cap_x][..],
                         &[sens_mult, sens_mult * output_cap][..],
                     )
                 } else {
                     (&[cap_x][..], &[sens_mult, sens_mult * output_cap][..])
                 }
             } else {
-                if offset > 0. {
-                    (&[offset][..], &[sens_mult][..])
+                if offset_linear > 0. {
+                    (&[offset_linear][..], &[sens_mult][..])
                 } else {
                     (&[][..], &[sens_mult][..])
                 }
@@ -302,11 +313,5 @@ impl<M> Program<M> for Graph {
         }
 
         vec![frame.into_geometry()]
-    }
-}
-
-impl From<Params> for Graph {
-    fn from(params: Params) -> Self {
-        Graph { params }
     }
 }
