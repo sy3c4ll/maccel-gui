@@ -1,5 +1,3 @@
-use std::mem::transmute_copy;
-
 use iced::alignment::{Horizontal, Vertical};
 use iced::mouse::Cursor;
 use iced::widget::canvas::fill::Rule;
@@ -11,14 +9,15 @@ use iced::widget::canvas::{
     Text,
 };
 use iced::{Color, Pixels, Point, Rectangle, Renderer, Size, Theme, Vector, color};
-use maccel_core::{AllParamArgs, inputspeed::read_input_speed};
+use maccel_core::inputspeed::{read_input_speed, setup_input_speed_reader};
+use maccel_core::{AllParamArgs, ContextRef, persist::ParamStore, sensitivity};
 
 #[derive(Debug)]
-pub struct Graph {
-    params: AllParamArgs,
+pub struct Graph<PS: ParamStore> {
+    context: ContextRef<PS>,
 }
 
-impl Graph {
+impl<PS: ParamStore> Graph<PS> {
     const AXIS_BOUNDS: Size = Size::new(80., 3.);
     const fn graph_area(size: Size) -> Rectangle {
         const ORIGIN_MARGIN: f32 = 40.;
@@ -31,20 +30,52 @@ impl Graph {
         }
     }
 
-    pub fn new(params: &AllParamArgs) -> Self {
-        Graph {
-            params: unsafe { transmute_copy(params) },
+    pub fn new(context: ContextRef<PS>) -> Self {
+        setup_input_speed_reader();
+        Graph { context }
+    }
+    fn build_plots(&self, x_bld: &mut Builder, y_bld: &mut Builder, bounds: Rectangle) {
+        const STEP_SZ: f32 = 0.25;
+
+        let mut v = bounds.x;
+        let (x_sens, y_sens) = sensitivity(
+            v as f64,
+            self.context.get().current_mode,
+            &self.context.get().params_snapshot(),
+        );
+        let (x_sens, y_sens) = (x_sens as f32, y_sens as f32);
+        x_bld.move_to(Point { x: v, y: x_sens });
+        y_bld.move_to(Point { x: v, y: y_sens });
+        v += STEP_SZ;
+
+        while v <= bounds.x + bounds.width {
+            let (x_sens, y_sens) = sensitivity(
+                v as f64,
+                self.context.get().current_mode,
+                &self.context.get().params_snapshot(),
+            );
+            let (x_sens, y_sens) = (x_sens as f32, y_sens as f32);
+            if (bounds.y..=bounds.y + bounds.height).contains(&x_sens) {
+                x_bld.line_to(Point { x: v, y: x_sens });
+            } else {
+                x_bld.move_to(Point { x: v, y: x_sens });
+            }
+            if (bounds.y..=bounds.y + bounds.height).contains(&y_sens) {
+                y_bld.line_to(Point { x: v, y: y_sens });
+            } else {
+                y_bld.move_to(Point { x: v, y: y_sens });
+            }
+            v += STEP_SZ;
         }
     }
-
-    fn build_graph(&self, builder: &mut Builder, limit: Size) {
+    fn points_of_interest(&self) -> Vec<Point> {
         let AllParamArgs {
             sens_mult,
             accel,
             offset_linear,
             output_cap,
             ..
-        } = self.params;
+        } = self.context.get().params_snapshot();
         let (sens_mult, accel, offset_linear, output_cap) = (
             f64::from(sens_mult) as f32,
             f64::from(accel) as f32,
@@ -52,56 +83,39 @@ impl Graph {
             f64::from(output_cap) as f32,
         );
 
-        builder.move_to(Point {
-            x: 0.,
-            y: sens_mult,
-        });
-        if output_cap <= 0. {
-            // No cap
+        let list = if output_cap <= 0. {
             if offset_linear > 0. {
-                builder.line_to(Point {
-                    x: offset_linear,
-                    y: sens_mult,
-                });
-            }
-            builder.line_to(Point {
-                x: limit.width,
-                y: sens_mult + (limit.width - offset_linear) * accel,
-            });
-        } else if output_cap <= 1. {
-            // Nonsensical cap, but treat as no accel
-            builder.line_to(Point {
-                x: limit.width,
-                y: sens_mult,
-            });
-        } else {
-            // Well-defined cap
-            if offset_linear > 0. {
-                builder.line_to(Point {
-                    x: offset_linear,
-                    y: sens_mult,
-                });
-            }
-            if offset_linear + (sens_mult * (output_cap - 1.)) / accel < limit.width {
-                builder.line_to(Point {
-                    x: offset_linear + (sens_mult * (output_cap - 1.)) / accel,
-                    y: sens_mult * output_cap,
-                });
-                builder.line_to(Point {
-                    x: limit.width,
-                    y: sens_mult * output_cap,
-                });
+                &[(0., sens_mult), (offset_linear, sens_mult)][..]
             } else {
-                builder.line_to(Point {
-                    x: limit.width,
-                    y: sens_mult + (limit.width - offset_linear) * accel,
-                });
+                &[(0., sens_mult)][..]
             }
-        }
+        } else if output_cap <= 1. {
+            &[(0., sens_mult)][..]
+        } else {
+            let cap_x = offset_linear + (sens_mult * (output_cap - 1.)) / accel;
+            if cap_x < Graph::<PS>::AXIS_BOUNDS.width {
+                if offset_linear > 0. {
+                    &[
+                        (0., sens_mult),
+                        (offset_linear, sens_mult),
+                        (cap_x, sens_mult * output_cap),
+                    ][..]
+                } else {
+                    &[(0., sens_mult), (cap_x, sens_mult * output_cap)][..]
+                }
+            } else {
+                if offset_linear > 0. {
+                    &[(0., sens_mult), (offset_linear, sens_mult)][..]
+                } else {
+                    &[(0., sens_mult)][..]
+                }
+            }
+        };
+        list.into_iter().copied().map(Point::from).collect()
     }
 }
 
-impl<M> Program<M> for Graph {
+impl<M, PS: ParamStore> Program<M> for Graph<PS> {
     type State = ();
     fn draw(
         &self,
@@ -111,27 +125,24 @@ impl<M> Program<M> for Graph {
         bounds: Rectangle,
         _cursor: Cursor,
     ) -> Vec<Geometry> {
-        let axes = Graph::AXIS_BOUNDS;
-        let graph_area = Graph::graph_area(bounds.size());
+        let axes = Graph::<PS>::AXIS_BOUNDS;
+        let graph_area = Graph::<PS>::graph_area(bounds.size());
         let (graph_sz, graph_pos) = (graph_area.size(), graph_area.position());
-        let AllParamArgs {
-            sens_mult,
-            accel,
-            offset_linear,
-            output_cap,
-            ..
-        } = self.params;
-        let (sens_mult, accel, offset_linear, output_cap) = (
-            f64::from(sens_mult) as f32,
-            f64::from(accel) as f32,
-            f64::from(offset_linear) as f32,
-            f64::from(output_cap) as f32,
-        );
 
         let graph_transform =
             Transform2D::scale(graph_sz.width / axes.width, graph_sz.height / axes.height)
                 .then_translate(Vector2D::new(graph_pos.x, graph_pos.y));
-        let graph_stroke = Stroke {
+        let x_plot_stroke = Stroke {
+            style: Style::Solid(Color::WHITE),
+            width: 1.,
+            line_cap: LineCap::Round,
+            line_join: LineJoin::Round,
+            line_dash: LineDash {
+                segments: &[],
+                offset: 0,
+            },
+        };
+        let y_plot_stroke = Stroke {
             style: Style::Solid(Color::WHITE),
             width: 1.,
             line_cap: LineCap::Round,
@@ -183,7 +194,7 @@ impl<M> Program<M> for Graph {
                 offset: 0,
             },
         };
-        let input_indicator_fill = Fill {
+        let indic_fill = Fill {
             style: Style::Gradient(Gradient::Linear(
                 Linear::new(
                     graph_pos,
@@ -202,31 +213,50 @@ impl<M> Program<M> for Graph {
         let mut frame = Frame::new(renderer, bounds.size());
 
         let input_speed = (read_input_speed() as f32).clamp(0., axes.width);
-        let input_indicator = Path::new(|b| {
-            b.move_to(Point::ORIGIN);
-            b.line_to(Point {
-                x: 0.,
-                y: sens_mult,
-            });
-            self.build_graph(
-                b,
-                Size {
+        let (x_indic, y_indic) = {
+            let mut x_bld = Builder::new();
+            let mut y_bld = Builder::new();
+            self.build_plots(
+                &mut x_bld,
+                &mut y_bld,
+                Rectangle {
+                    x: 0.,
+                    y: 0.,
                     width: input_speed,
                     height: axes.height,
                 },
             );
-            b.line_to(Point {
+            x_bld.line_to(Point {
                 x: input_speed,
                 y: 0.,
             });
-            b.line_to(Point::ORIGIN);
-        });
-        let real_input_indicator = input_indicator.transform(&graph_transform);
-        frame.fill(&real_input_indicator, input_indicator_fill);
+            y_bld.line_to(Point {
+                x: input_speed,
+                y: 0.,
+            });
+            x_bld.line_to(Point::ORIGIN);
+            y_bld.line_to(Point::ORIGIN);
+            x_bld.close();
+            y_bld.close();
+            (
+                x_bld.build().transform(&graph_transform),
+                y_bld.build().transform(&graph_transform),
+            )
+        };
+        frame.fill(&x_indic, indic_fill);
+        frame.fill(&y_indic, indic_fill);
 
-        let graph = Path::new(|b| self.build_graph(b, axes));
-        let real_graph = graph.transform(&graph_transform);
-        frame.stroke(&real_graph, graph_stroke);
+        let (x_plot, y_plot) = {
+            let mut x_bld = Builder::new();
+            let mut y_bld = Builder::new();
+            self.build_plots(&mut x_bld, &mut y_bld, Rectangle::with_size(axes));
+            (
+                x_bld.build().transform(&graph_transform),
+                y_bld.build().transform(&graph_transform),
+            )
+        };
+        frame.stroke(&x_plot, x_plot_stroke);
+        frame.stroke(&y_plot, y_plot_stroke);
 
         let x_axis = Path::line(
             graph_pos + Vector::new(-10., 0.),
@@ -239,44 +269,17 @@ impl<M> Program<M> for Graph {
         frame.stroke(&x_axis, x_axis_stroke);
         frame.stroke(&y_axis, y_axis_stroke);
 
-        let vertex_labels = if output_cap <= 0. {
-            if offset_linear > 0. {
-                (&[offset_linear][..], &[sens_mult][..])
-            } else {
-                (&[][..], &[sens_mult][..])
-            }
-        } else if output_cap <= 1. {
-            (&[][..], &[sens_mult][..])
-        } else {
-            let cap_x = offset_linear + (sens_mult * (output_cap - 1.)) / accel;
-            if cap_x < axes.width {
-                if offset_linear > 0. {
-                    (
-                        &[offset_linear, cap_x][..],
-                        &[sens_mult, sens_mult * output_cap][..],
-                    )
-                } else {
-                    (&[cap_x][..], &[sens_mult, sens_mult * output_cap][..])
-                }
-            } else {
-                if offset_linear > 0. {
-                    (&[offset_linear][..], &[sens_mult][..])
-                } else {
-                    (&[][..], &[sens_mult][..])
-                }
-            }
-        };
-        let default_labels = (
-            (1..=axes.width as u32 / 10)
-                .map(|u| u as f32 * 10.)
-                .collect::<Vec<_>>(),
-            (1..=axes.height as u32 * 2)
-                .map(|u| u as f32 / 2.)
-                .collect::<Vec<_>>(),
-        );
-        let (mut x_labels, mut y_labels) = default_labels;
-        x_labels.extend_from_slice(vertex_labels.0);
-        y_labels.extend_from_slice(vertex_labels.1);
+        let vertex_labels = self.points_of_interest();
+        let mut x_labels = (1..=axes.width as u32 / 10)
+            .map(|u| u as f32 * 10.)
+            .collect::<Vec<_>>();
+        let mut y_labels = (1..=axes.height as u32 * 2)
+            .map(|u| u as f32 / 2.)
+            .collect::<Vec<_>>();
+        x_labels.extend(vertex_labels.iter().map(|p| p.x));
+        y_labels.extend(vertex_labels.iter().map(|p| p.y));
+        x_labels.retain(|f| (0. ..=axes.width).contains(f));
+        y_labels.retain(|f| (0. ..=axes.height).contains(f));
         x_labels.sort_by(f32::total_cmp);
         y_labels.sort_by(f32::total_cmp);
         x_labels.dedup();
@@ -288,7 +291,7 @@ impl<M> Program<M> for Graph {
                 y: graph_pos.y + 10.,
             },
             color: Color::WHITE,
-            size: Pixels(9.),
+            size: Pixels(10.),
             horizontal_alignment: Horizontal::Center,
             vertical_alignment: Vertical::Center,
             ..Text::default()
@@ -300,7 +303,7 @@ impl<M> Program<M> for Graph {
                 y: f * graph_sz.height / axes.height + graph_pos.y,
             },
             color: Color::WHITE,
-            size: Pixels(9.),
+            size: Pixels(10.),
             horizontal_alignment: Horizontal::Center,
             vertical_alignment: Vertical::Center,
             ..Text::default()

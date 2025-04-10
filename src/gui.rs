@@ -1,16 +1,11 @@
-use crate::graph::Graph;
+use crate::Graph;
 use iced::Length::FillPortion;
-use iced::widget::container::Style;
-use iced::widget::{Space, button, canvas, center, column, container, row, text, text_input};
+use iced::alignment::Horizontal;
+use iced::border::Radius;
+use iced::keyboard::{Key, Modifiers, key::Named, on_key_press};
+use iced::widget::{Space, canvas, center, column, container, row, scrollable, text, text_input};
 use iced::{Border, Element, Fill, Result, Task, Theme, application};
-use iced::{alignment::Horizontal, widget::scrollable};
-use iced::{
-    border::Radius,
-    keyboard::{Key, Modifiers, key::Named, on_key_press},
-};
-use maccel_core::fixedptc::Fpt;
-use maccel_core::{AllParamArgs, Param};
-use std::mem::transmute_copy;
+use maccel_core::{AllParamArgs, ContextRef, Param, persist::ParamStore};
 use std::ops::{Index, IndexMut};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -68,54 +63,39 @@ impl IndexMut<Param> for InputBuffer {
 }
 
 #[derive(Debug)]
-pub struct Gui {
-    params: AllParamArgs,
+pub struct Gui<PS: ParamStore> {
+    context: ContextRef<PS>,
     input_buffer: InputBuffer,
     focused: Option<Param>,
 }
 
-impl Gui {
+impl<PS: ParamStore + 'static> Gui<PS> {
+    pub fn run(self) -> Result {
+        application("maccel", Gui::update, Gui::view)
+            .subscription(|_| on_key_press(Gui::<PS>::handle_key))
+            .antialiasing(true)
+            .centered()
+            .theme(|_| Theme::TokyoNight)
+            .run_with(|| (self, Task::none()))
+    }
+}
+
+impl<PS: ParamStore> Gui<PS> {
     const PARAM_ORDER: [Param; 4] = [
         Param::SensMult,
         Param::Accel,
         Param::OffsetLinear,
         Param::OutputCap,
     ];
-    const fn at(&self, param: Param) -> &Fpt {
-        match param {
-            Param::SensMult => &self.params.sens_mult,
-            Param::Accel => &self.params.accel,
-            Param::OffsetLinear => &self.params.offset_linear,
-            Param::OutputCap => &self.params.output_cap,
-            _ => todo!(),
-        }
-    }
-    const fn at_mut(&mut self, param: Param) -> &mut Fpt {
-        match param {
-            Param::SensMult => &mut self.params.sens_mult,
-            Param::Accel => &mut self.params.accel,
-            Param::OffsetLinear => &mut self.params.offset_linear,
-            Param::OutputCap => &mut self.params.output_cap,
-            _ => todo!(),
-        }
-    }
 
-    pub fn new(params: &AllParamArgs) -> Self {
+    pub fn new(context: ContextRef<PS>) -> Self {
+        let params = context.get().params_snapshot();
         Gui {
-            params: unsafe { transmute_copy(params) },
-            input_buffer: InputBuffer::new(params),
+            context,
+            input_buffer: InputBuffer::new(&params),
             focused: None,
         }
     }
-    pub fn run(self) -> Result {
-        application("maccel", Gui::update, Gui::view)
-            .subscription(|_| on_key_press(Gui::handle_key))
-            .antialiasing(true)
-            .centered()
-            .theme(|_| Theme::TokyoNight)
-            .run_with(|| (self, Task::none()))
-    }
-
     fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
             Message::FieldInput(param, s) => {
@@ -124,13 +104,20 @@ impl Gui {
             }
             Message::FieldUpdate(param) => {
                 if let Ok(f) = self.input_buffer[param].parse::<f64>() {
-                    *self.at_mut(param) = Fpt::from(f);
+                    self.context
+                        .get_mut()
+                        .update_param_value(param, f)
+                        .expect("failed updating param");
                 }
-                self.input_buffer[param] = self.at(param).to_string();
+                self.input_buffer[param] = self
+                    .context
+                    .get()
+                    .parameter(param)
+                    .map_or_else(String::new, |p| p.value.to_string());
             }
             Message::NextField => {
                 if let Some(param) = self.focused {
-                    let next = *Gui::PARAM_ORDER
+                    let next = *Gui::<PS>::PARAM_ORDER
                         .iter()
                         .cycle()
                         .skip_while(|&&p| p != param)
@@ -142,7 +129,7 @@ impl Gui {
             }
             Message::PrevField => {
                 if let Some(param) = self.focused {
-                    let prev = *Gui::PARAM_ORDER
+                    let prev = *Gui::<PS>::PARAM_ORDER
                         .iter()
                         .rev()
                         .cycle()
@@ -166,33 +153,36 @@ impl Gui {
                     self.param_box(Param::Accel),
                     self.param_box(Param::OffsetLinear),
                     self.param_box(Param::OutputCap),
-                    button("Apply"),
                 ]
                 .spacing(20.)
                 .align_x(Horizontal::Center)
                 .width(Fill)
             ))
-            .style(|theme: &Theme| Style {
+            .style(|theme: &Theme| container::Style {
                 border: Border {
                     color: theme.palette().primary,
                     width: 1.,
                     radius: Radius::new(10.),
                 },
-                ..Style::default()
+                ..container::Style::default()
             })
             .padding(20.)
             .width(FillPortion(1))
             .height(Fill),
-            center(canvas(Graph::new(&self.params)).width(Fill).height(Fill))
-                .style(|theme: &Theme| Style {
-                    border: Border {
-                        color: theme.palette().primary,
-                        width: 1.,
-                        radius: Radius::new(10.),
-                    },
-                    ..Style::default()
-                })
-                .width(FillPortion(3)),
+            center(
+                canvas(Graph::new(self.context.clone()))
+                    .width(Fill)
+                    .height(Fill)
+            )
+            .style(|theme: &Theme| container::Style {
+                border: Border {
+                    color: theme.palette().primary,
+                    width: 1.,
+                    radius: Radius::new(10.),
+                },
+                ..container::Style::default()
+            })
+            .width(FillPortion(3)),
         ]
         .spacing(5.)
         .padding(5.)
@@ -229,13 +219,13 @@ impl Gui {
             ]
             .spacing(5.),
         )
-        .style(|theme: &Theme| Style {
+        .style(|theme: &Theme| container::Style {
             border: Border {
                 color: theme.extended_palette().secondary.strong.color,
                 width: 2.,
                 radius: Radius::new(5.),
             },
-            ..Style::default()
+            ..container::Style::default()
         })
         .padding([15., 0.])
         .into()
