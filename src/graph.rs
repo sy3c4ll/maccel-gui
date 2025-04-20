@@ -1,3 +1,4 @@
+use crate::Control;
 use iced::alignment::{Horizontal, Vertical};
 use iced::mouse::Cursor;
 use iced::widget::canvas::fill::Rule;
@@ -10,7 +11,7 @@ use iced::widget::canvas::{
 };
 use iced::{Color, Pixels, Point, Rectangle, Renderer, Size, Theme, Vector, color};
 use maccel_core::inputspeed::{read_input_speed, setup_input_speed_reader};
-use maccel_core::{AllParamArgs, ContextRef, persist::ParamStore, sensitivity};
+use maccel_core::{ContextRef, persist::ParamStore, sensitivity};
 
 #[derive(Debug)]
 pub struct Graph<PS: ParamStore> {
@@ -18,8 +19,8 @@ pub struct Graph<PS: ParamStore> {
 }
 
 impl<PS: ParamStore> Graph<PS> {
-    const AXIS_BOUNDS: Size = Size::new(80., 3.);
-    const fn graph_area(size: Size) -> Rectangle {
+    pub const AXIS_BOUNDS: Size = Size::new(80., 3.);
+    pub const fn graph_area(size: Size) -> Rectangle {
         const ORIGIN_MARGIN: f32 = 40.;
         const EDGE_MARGIN: f32 = 20.;
         Rectangle {
@@ -67,51 +68,6 @@ impl<PS: ParamStore> Graph<PS> {
             }
             v += STEP_SZ;
         }
-    }
-    fn points_of_interest(&self) -> Vec<Point> {
-        let AllParamArgs {
-            sens_mult,
-            accel,
-            offset_linear,
-            output_cap,
-            ..
-        } = self.context.get().params_snapshot();
-        let (sens_mult, accel, offset_linear, output_cap) = (
-            f64::from(sens_mult) as f32,
-            f64::from(accel) as f32,
-            f64::from(offset_linear) as f32,
-            f64::from(output_cap) as f32,
-        );
-
-        let list = if output_cap <= 0. {
-            if offset_linear > 0. {
-                &[(0., sens_mult), (offset_linear, sens_mult)][..]
-            } else {
-                &[(0., sens_mult)][..]
-            }
-        } else if output_cap <= 1. {
-            &[(0., sens_mult)][..]
-        } else {
-            let cap_x = offset_linear + (sens_mult * (output_cap - 1.)) / accel;
-            if cap_x < Graph::<PS>::AXIS_BOUNDS.width {
-                if offset_linear > 0. {
-                    &[
-                        (0., sens_mult),
-                        (offset_linear, sens_mult),
-                        (cap_x, sens_mult * output_cap),
-                    ][..]
-                } else {
-                    &[(0., sens_mult), (cap_x, sens_mult * output_cap)][..]
-                }
-            } else {
-                if offset_linear > 0. {
-                    &[(0., sens_mult), (offset_linear, sens_mult)][..]
-                } else {
-                    &[(0., sens_mult)][..]
-                }
-            }
-        };
-        list.into_iter().copied().map(Point::from).collect()
     }
 }
 
@@ -269,15 +225,15 @@ impl<M, PS: ParamStore> Program<M> for Graph<PS> {
         frame.stroke(&x_axis, x_axis_stroke);
         frame.stroke(&y_axis, y_axis_stroke);
 
-        let vertex_labels = self.points_of_interest();
+        let controls = Control::controls(self.context.clone());
         let mut x_labels = (1..=axes.width as u32 / 10)
             .map(|u| u as f32 * 10.)
             .collect::<Vec<_>>();
         let mut y_labels = (1..=axes.height as u32 * 2)
             .map(|u| u as f32 / 2.)
             .collect::<Vec<_>>();
-        x_labels.extend(vertex_labels.iter().map(|p| p.x));
-        y_labels.extend(vertex_labels.iter().map(|p| p.y));
+        x_labels.extend(controls.iter().map(|c| c.location().x));
+        y_labels.extend(controls.iter().map(|c| c.location().y));
         x_labels.retain(|f| (0. ..=axes.width).contains(f));
         y_labels.retain(|f| (0. ..=axes.height).contains(f));
         x_labels.sort_by(f32::total_cmp);

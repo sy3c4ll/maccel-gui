@@ -1,6 +1,8 @@
+pub mod control;
 pub mod graph;
 pub mod gui;
 
+pub use control::Control;
 pub use graph::Graph;
 pub use gui::Gui;
 
