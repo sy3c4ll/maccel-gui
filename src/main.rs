@@ -1,5 +1,5 @@
-use maccel_gui::run_gui;
+use maccel_gui::run_test;
 
 fn main() -> iced::Result {
-    run_gui()
+    run_test()
 }
