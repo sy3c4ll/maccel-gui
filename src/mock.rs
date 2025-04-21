@@ -38,7 +38,7 @@ impl ParamStore for RuntimeStore {
     }
 }
 
-pub fn run_test() -> iced::Result {
+pub fn run_mock() -> iced::Result {
     Gui::new(ContextRef::new(TuiContext::new(
         RuntimeStore::default(),
         ALL_PARAMS,

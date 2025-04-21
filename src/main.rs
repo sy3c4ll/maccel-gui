@@ -1,5 +1,5 @@
-use maccel_gui::run_test;
+use maccel_gui::run_mock;
 
 fn main() -> iced::Result {
-    run_test()
+    run_mock()
 }
