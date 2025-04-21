@@ -3,8 +3,6 @@ use maccel_core::{
     ALL_PARAMS, AccelMode, ContextRef, Param, TuiContext, fixedptc::Fpt, persist::ParamStore,
 };
 
-static mut RUNTIME_ACCEL_MODE: AccelMode = AccelMode::Linear;
-
 #[derive(Debug)]
 struct RuntimeStore(AccelMode, [f64; ALL_PARAMS.len()]);
 
@@ -19,22 +17,19 @@ impl Default for RuntimeStore {
 
 impl ParamStore for RuntimeStore {
     fn set(&mut self, param: Param, value: f64) -> anyhow::Result<()> {
-        // Reserve self.0 for when #77 is merged
-        self.0 = unsafe { RUNTIME_ACCEL_MODE };
         self.1[param as u8 as usize] = value;
         Ok(())
     }
-    fn get(&self, param: &Param) -> anyhow::Result<Fpt> {
-        Ok(self.1[*param as u8 as usize].into())
+    fn get(&self, param: Param) -> anyhow::Result<Fpt> {
+        Ok(self.1[param as u8 as usize].into())
     }
 
-    fn set_current_accel_mode(mode: AccelMode) {
-        unsafe {
-            RUNTIME_ACCEL_MODE = mode;
-        }
+    fn set_current_accel_mode(&mut self, mode: AccelMode) -> anyhow::Result<()> {
+        self.0 = mode;
+        Ok(())
     }
-    fn get_current_accel_mode() -> AccelMode {
-        unsafe { RUNTIME_ACCEL_MODE }
+    fn get_current_accel_mode(&self) -> anyhow::Result<AccelMode> {
+        Ok(self.0)
     }
 }
 

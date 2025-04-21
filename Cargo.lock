@@ -1775,7 +1775,7 @@ dependencies = [
 [[package]]
 name = "maccel-core"
 version = "0.0.0"
-source = "git+https://github.com/Gnarus-G/maccel#d4ba743a2653299228672c0d7e13fbcd7df1a2ae"
+source = "git+https://github.com/Gnarus-G/maccel#2443c18573a932338b2503e7fb456c73b0db0cbf"
 dependencies = [
  "anyhow",
  "cc",
@@ -2819,9 +2819,9 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "signal-hook-registry"
-version = "1.4.4"
+version = "1.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1ee1aca2bc74ef9589efa7ccaa0f3752751399940356209b3fd80c078149b5e"
+checksum = "9203b8055f63a2a00e2f593bb0510367fe707d7ff1e5c872de2f537b339e5410"
 dependencies = [
  "libc",
 ]
