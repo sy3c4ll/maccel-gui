@@ -1,12 +1,14 @@
-pub mod control;
-pub mod graph;
-pub mod gui;
+mod control;
+mod graph;
+mod gui;
 mod mock;
+mod theme;
 
 pub use control::Control;
 pub use graph::Graph;
-pub use gui::Gui;
+pub use gui::{Gui, Message};
 pub use mock::run_mock;
+pub use theme::Theme;
 
 pub fn run_gui() -> iced::Result {
     use maccel_core::{ALL_PARAMS, ContextRef, TuiContext, persist::SysFsStore};
