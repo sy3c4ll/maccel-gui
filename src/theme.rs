@@ -4,20 +4,19 @@ use iced::widget::canvas::gradient::Linear;
 use iced::widget::canvas::{Fill, Gradient, LineCap, LineDash, LineJoin, Stroke, Style, Text};
 use iced::{Color, Pixels, Point, Rectangle, Size, Vector, color};
 
-#[derive(Clone, Debug)]
 pub struct Theme {
     pub h_plot_stroke: Stroke<'static>,
     pub v_plot_stroke: Stroke<'static>,
-    pub h_speedo_fill: fn(Rectangle) -> Fill,
-    pub v_speedo_fill: fn(Rectangle) -> Fill,
-    pub x_axis_stroke: fn(Rectangle) -> Stroke<'static>,
-    pub y_axis_stroke: fn(Rectangle) -> Stroke<'static>,
-    pub x_label_text: fn(f32, Size, Rectangle) -> Text,
-    pub y_label_text: fn(f32, Size, Rectangle) -> Text,
+    pub h_speedo_fill: Fill,
+    pub v_speedo_fill: Fill,
+    pub x_axis_stroke: Stroke<'static>,
+    pub y_axis_stroke: Stroke<'static>,
+    pub x_label_text: Box<dyn Fn(f32) -> Text>,
+    pub y_label_text: Box<dyn Fn(f32) -> Text>,
 }
 
-impl Default for Theme {
-    fn default() -> Self {
+impl Theme {
+    pub fn from_bounds(axes: Size, area: Rectangle) -> Self {
         Theme {
             h_plot_stroke: Stroke {
                 style: Style::Solid(Color::WHITE),
@@ -39,7 +38,7 @@ impl Default for Theme {
                     offset: 0,
                 },
             },
-            h_speedo_fill: |area| Fill {
+            h_speedo_fill: Fill {
                 style: Style::Gradient(Gradient::Linear(
                     Linear::new(
                         area.position(),
@@ -54,7 +53,7 @@ impl Default for Theme {
                 )),
                 rule: Rule::NonZero,
             },
-            v_speedo_fill: |area| Fill {
+            v_speedo_fill: Fill {
                 style: Style::Gradient(Gradient::Linear(
                     Linear::new(
                         area.position(),
@@ -69,7 +68,7 @@ impl Default for Theme {
                 )),
                 rule: Rule::NonZero,
             },
-            x_axis_stroke: |area| Stroke {
+            x_axis_stroke: Stroke {
                 style: Style::Gradient(Gradient::Linear(
                     Linear::new(
                         area.position(),
@@ -90,7 +89,7 @@ impl Default for Theme {
                     offset: 0,
                 },
             },
-            y_axis_stroke: |area| Stroke {
+            y_axis_stroke: Stroke {
                 style: Style::Gradient(Gradient::Linear(
                     Linear::new(
                         area.position(),
@@ -111,7 +110,7 @@ impl Default for Theme {
                     offset: 0,
                 },
             },
-            x_label_text: |f, axes, area| Text {
+            x_label_text: Box::new(move |f| Text {
                 content: f.to_string(),
                 position: Point {
                     x: f * area.width / axes.width + area.x,
@@ -122,8 +121,8 @@ impl Default for Theme {
                 horizontal_alignment: Horizontal::Center,
                 vertical_alignment: Vertical::Center,
                 ..Text::default()
-            },
-            y_label_text: |f, axes, area| Text {
+            }),
+            y_label_text: Box::new(move |f| Text {
                 content: f.to_string(),
                 position: Point {
                     x: area.x - 10.,
@@ -134,7 +133,7 @@ impl Default for Theme {
                 horizontal_alignment: Horizontal::Center,
                 vertical_alignment: Vertical::Center,
                 ..Text::default()
-            },
+            }),
         }
     }
 }

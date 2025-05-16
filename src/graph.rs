@@ -77,11 +77,9 @@ impl<M, PS: ParamStore> Program<M> for Graph<PS> {
     ) -> Vec<Geometry> {
         let axes = Graph::<PS>::AXIS_BOUNDS;
         let area = Graph::<PS>::graph_area(bounds.size());
-        let theme = crate::Theme::default();
-
-        let graph_transform =
-            Transform2D::scale(area.width / axes.width, area.height / axes.height)
-                .then_translate(Vector2D::new(area.x, area.y));
+        let theme = crate::Theme::from_bounds(axes, area);
+        let transform = Transform2D::scale(area.width / axes.width, area.height / axes.height)
+            .then_translate(Vector2D::new(area.x, area.y));
 
         let mut frame = Frame::new(renderer, bounds.size());
 
@@ -112,20 +110,20 @@ impl<M, PS: ParamStore> Program<M> for Graph<PS> {
             h_bld.close();
             v_bld.close();
             (
-                h_bld.build().transform(&graph_transform),
-                v_bld.build().transform(&graph_transform),
+                h_bld.build().transform(&transform),
+                v_bld.build().transform(&transform),
             )
         };
-        frame.fill(&h_speedo, (theme.h_speedo_fill)(area));
-        frame.fill(&v_speedo, (theme.v_speedo_fill)(area));
+        frame.fill(&h_speedo, theme.h_speedo_fill);
+        frame.fill(&v_speedo, theme.v_speedo_fill);
 
         let (h_plot, v_plot) = {
             let mut h_bld = Builder::new();
             let mut v_bld = Builder::new();
             self.build_plots(&mut h_bld, &mut v_bld, Rectangle::with_size(axes));
             (
-                h_bld.build().transform(&graph_transform),
-                v_bld.build().transform(&graph_transform),
+                h_bld.build().transform(&transform),
+                v_bld.build().transform(&transform),
             )
         };
         frame.stroke(&h_plot, theme.h_plot_stroke);
@@ -139,8 +137,8 @@ impl<M, PS: ParamStore> Program<M> for Graph<PS> {
             area.position() + Vector::new(0., 10.),
             area.position() + Vector::new(0., area.height),
         );
-        frame.stroke(&x_axis, (theme.x_axis_stroke)(area));
-        frame.stroke(&y_axis, (theme.y_axis_stroke)(area));
+        frame.stroke(&x_axis, theme.x_axis_stroke);
+        frame.stroke(&y_axis, theme.y_axis_stroke);
 
         let controls = Control::controls(self.context.clone());
         let mut x_labels = (1..=axes.width as u32 / 10)
@@ -158,10 +156,10 @@ impl<M, PS: ParamStore> Program<M> for Graph<PS> {
         x_labels.dedup();
         y_labels.dedup();
         for f in x_labels {
-            frame.fill_text((theme.x_label_text)(f, axes, area));
+            frame.fill_text((theme.x_label_text)(f));
         }
         for f in y_labels {
-            frame.fill_text((theme.y_label_text)(f, axes, area));
+            frame.fill_text((theme.y_label_text)(f));
         }
 
         vec![frame.into_geometry()]
