@@ -17,11 +17,11 @@ impl Default for RuntimeStore {
 
 impl ParamStore for RuntimeStore {
     fn set(&mut self, param: Param, value: f64) -> anyhow::Result<()> {
-        self.1[param as u8 as usize] = value;
+        self.1[param as usize] = value;
         Ok(())
     }
     fn get(&self, param: Param) -> anyhow::Result<Fpt> {
-        Ok(self.1[param as u8 as usize].into())
+        Ok(self.1[param as usize].into())
     }
 
     fn set_current_accel_mode(&mut self, mode: AccelMode) -> anyhow::Result<()> {

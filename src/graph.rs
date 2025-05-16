@@ -77,7 +77,7 @@ impl<M, PS: ParamStore> Program<M> for Graph<PS> {
     ) -> Vec<Geometry> {
         let axes = Graph::<PS>::AXIS_BOUNDS;
         let area = Graph::<PS>::graph_area(bounds.size());
-        let theme = crate::Theme::from_bounds(axes, area);
+        let theme = crate::GraphTheme::new(axes, area);
         let transform = Transform2D::scale(area.width / axes.width, area.height / axes.height)
             .then_translate(Vector2D::new(area.x, area.y));
 
