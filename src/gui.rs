@@ -1,118 +1,101 @@
-use crate::GuiTheme;
-use iced::keyboard::{Key, Modifiers, key::Named, on_key_press};
-use iced::widget::text_input;
-use iced::{Element, Result, Task, Theme, application};
-use maccel_core::{ALL_COMMON_PARAMS, ALL_LINEAR_PARAMS};
-use maccel_core::{ALL_PARAMS, ContextRef, Param, persist::ParamStore};
+use crate::Message;
+use iced::alignment::Horizontal;
+use iced::border::Radius;
+use iced::widget::canvas::Program;
+use iced::widget::{
+    Space, canvas, center, column, container, keyed_column, row, scrollable, text, text_input,
+};
+use iced::{Alignment, Border, Element, Length, Theme};
+use maccel_core::{
+    ALL_COMMON_PARAMS, ALL_LINEAR_PARAMS, ALL_NATURAL_PARAMS, ALL_SYNCHRONOUS_PARAMS, AccelMode,
+    Param,
+};
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Message {
-    FieldInput(Param, String),
-    FieldUpdate(Param),
-    NextField,
-    PrevField,
-    NextMode,
-    PrevMode,
-}
-
-#[derive(Debug)]
-pub struct Gui<PS: ParamStore> {
-    context: ContextRef<PS>,
-    input_buffer: [String; ALL_PARAMS.len()],
-    focused: Option<Param>,
-}
-
-impl<PS: ParamStore + 'static> Gui<PS> {
-    pub fn run(self) -> Result {
-        application("maccel", Gui::update, Gui::view)
-            .subscription(|_| on_key_press(Gui::<PS>::handle_key))
-            .antialiasing(true)
-            .centered()
-            .theme(|_| Theme::CatppuccinMocha)
-            .run_with(|| (self, Task::none()))
+pub trait Gui: 'static {
+    fn param_box(param: Param, buf: &str) -> Element<'static, Message> {
+        container(
+            column![
+                text(param.display_name())
+                    .align_x(Horizontal::Center)
+                    .width(Length::Fill),
+                row![
+                    Space::with_width(Length::FillPortion(1)),
+                    text_input(param.name(), buf)
+                        .id(param.name())
+                        .on_input(move |s| Message::FieldInput(param, s))
+                        .on_submit(Message::FieldUpdate(param))
+                        .padding(5.)
+                        .align_x(Horizontal::Left)
+                        .width(Length::FillPortion(4)),
+                    Space::with_width(Length::FillPortion(1)),
+                ],
+            ]
+            .spacing(5.),
+        )
+        .style(|theme: &Theme| container::Style {
+            border: Border {
+                color: theme.extended_palette().secondary.strong.color,
+                width: 2.,
+                radius: Radius::new(5.),
+            },
+            ..container::Style::default()
+        })
+        .padding([15., 0.])
+        .into()
     }
-    fn view(&self) -> Element<Message> {
-        let theme = GuiTheme::new();
-        (theme.screen)(self.context.clone(), &self.input_buffer)
-    }
-}
-
-impl<PS: ParamStore> Gui<PS> {
-    pub fn new(context: ContextRef<PS>) -> Self {
-        let mut input_buffer = <[String; ALL_PARAMS.len()]>::default();
-        for &param in ALL_PARAMS {
-            input_buffer[param as usize] = context
-                .get()
-                .parameter(param)
-                .map(|p| p.value.to_string())
-                .unwrap_or_default();
-        }
-        Gui {
-            context,
-            input_buffer,
-            focused: None,
-        }
-    }
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::FieldInput(param, s) => {
-                self.input_buffer[param as usize] = s;
-                self.focused = Some(param);
-            }
-            Message::FieldUpdate(param) => {
-                if let Ok(f) = self.input_buffer[param as usize].parse::<f64>() {
-                    self.context
-                        .get_mut()
-                        .update_param_value(param, f)
-                        .expect("failed updating param");
-                }
-                self.input_buffer[param as usize] = self
-                    .context
-                    .get()
-                    .parameter(param)
-                    .map_or_else(String::new, |p| p.value.to_string());
-            }
-            Message::NextField => {
-                if let Some(param) = self.focused {
-                    let next = ALL_COMMON_PARAMS
-                        .iter()
-                        .chain(ALL_LINEAR_PARAMS)
-                        .cycle()
-                        .skip_while(|&&p| p != param)
-                        .nth(1)
-                        .unwrap();
-                    self.focused = Some(*next);
-                    return text_input::focus(next.name());
-                }
-            }
-            Message::PrevField => {
-                if let Some(param) = self.focused {
-                    let prev = ALL_COMMON_PARAMS
-                        .iter()
-                        .chain(ALL_LINEAR_PARAMS)
-                        .rev()
-                        .cycle()
-                        .skip_while(|&&p| p != param)
-                        .nth(1)
-                        .unwrap();
-                    self.focused = Some(*prev);
-                    return text_input::focus(prev.name());
-                }
-            }
-            Message::NextMode => todo!(),
-            Message::PrevMode => todo!(),
-        }
-        Task::none()
-    }
-    fn handle_key(key: Key, modi: Modifiers) -> Option<Message> {
-        match key {
-            Key::Named(Named::Tab) if modi == Modifiers::empty() => Some(Message::NextField),
-            Key::Named(Named::ArrowDown) => Some(Message::NextField),
-            Key::Named(Named::Tab) if modi == Modifiers::SHIFT => Some(Message::PrevField),
-            Key::Named(Named::ArrowUp) => Some(Message::PrevField),
-            Key::Named(Named::ArrowRight) => Some(Message::NextMode),
-            Key::Named(Named::ArrowLeft) => Some(Message::PrevMode),
-            _ => None,
+    fn wrapper_style(theme: &Theme) -> container::Style {
+        container::Style {
+            border: Border {
+                color: theme.palette().primary,
+                width: 1.,
+                radius: Radius::new(10.),
+            },
+            ..container::Style::default()
         }
     }
+    fn params_div(mode: AccelMode, bufs: &[String]) -> Element<'static, Message> {
+        center(scrollable(
+            keyed_column(
+                ALL_COMMON_PARAMS
+                    .iter()
+                    .chain(match mode {
+                        AccelMode::Linear => ALL_LINEAR_PARAMS,
+                        AccelMode::Natural => ALL_NATURAL_PARAMS,
+                        AccelMode::Synchronous => ALL_SYNCHRONOUS_PARAMS,
+                    })
+                    .map(|&p| (p, Self::param_box(p, &bufs[p as usize]))),
+            )
+            .spacing(20.)
+            .align_items(Alignment::Center)
+            .width(Length::Fill),
+        ))
+        .style(Self::wrapper_style)
+        .padding(20.)
+        .width(Length::FillPortion(1))
+        .height(Length::Fill)
+        .into()
+    }
+    fn graph_div(graph: impl Program<Message> + 'static) -> Element<'static, Message> {
+        center(canvas(graph).width(Length::Fill).height(Length::Fill))
+            .style(Self::wrapper_style)
+            .width(Length::FillPortion(3))
+            .into()
+    }
+    fn screen(
+        graph: impl Program<Message> + 'static,
+        bufs: &[String],
+    ) -> Element<'static, Message> {
+        row![
+            Self::params_div(AccelMode::Linear, bufs),
+            Self::graph_div(graph),
+        ]
+        .spacing(5.)
+        .padding(5.)
+        .into()
+    }
 }
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DefaultGui;
+
+impl Gui for DefaultGui {}

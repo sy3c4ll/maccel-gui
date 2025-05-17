@@ -1,4 +1,4 @@
-use crate::Gui;
+use crate::{App, DefaultGui};
 use maccel_core::{
     ALL_PARAMS, AccelMode, ContextRef, Param, TuiContext, fixedptc::Fpt, persist::ParamStore,
 };
@@ -34,9 +34,9 @@ impl ParamStore for RuntimeStore {
 }
 
 pub fn run_mock() -> iced::Result {
-    Gui::new(ContextRef::new(TuiContext::new(
+    App::new(ContextRef::new(TuiContext::new(
         RuntimeStore::default(),
         ALL_PARAMS,
     )))
-    .run()
+    .run::<DefaultGui>()
 }
